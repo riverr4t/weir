@@ -28,6 +28,8 @@ var templateFS embed.FS
 //go:embed static/*
 var staticFS embed.FS
 
+var assetVersion = strconv.FormatInt(time.Now().Unix(), 36)
+
 type QbitControl interface {
 	Stop(ctx context.Context, hash string) error
 	Start(ctx context.Context, hash string) error
@@ -113,6 +115,7 @@ type appDot struct{ Href, Title, Label, State string }
 
 type page struct {
 	Title, Page string
+	V           string // asset cache-buster: process start time
 	Nav         []navItem
 	AppDots     []appDot
 	Flow        string
@@ -126,7 +129,7 @@ type page struct {
 
 func (s *Server) base(title, key string) page {
 	dl, _, _ := speeds(s.Snap)
-	p := page{Title: title, Page: key, Now: s.Now(), CleanerMode: s.CleanerMode,
+	p := page{Title: title, Page: key, Now: s.Now(), CleanerMode: s.CleanerMode, V: assetVersion,
 		Flow: strconv.FormatFloat(flow(dl), 'f', 2, 64)}
 	p.Nav = []navItem{
 		{Key: "downloads", Href: "/downloads", Label: "Downloads", Icon: "↓", Num: "1"},

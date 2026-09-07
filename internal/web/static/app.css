@@ -104,5 +104,12 @@ tr.trouble td.title .t{color:#f3d3a6}
   .rail .brand span,.rail .lbl,.rail .apps{display:none} .rail .brand{padding:0 8px 0 4px}
   .rail ul{flex-direction:row;flex:1;justify-content:space-around} .rail li a{padding:8px 10px;flex-direction:column;gap:2px} .rail li a[aria-current=page]::before{display:none} .rail li a .dot{position:absolute;top:6px;right:6px;margin:0}
   .page{margin:0;padding:22px 16px 90px}
-  table.queue td.eta,table.queue td.app{display:none} td.prog{width:90px} .log li{grid-template-columns:70px 1fr} .log .kind{grid-column:2} .log .what{grid-column:1/-1}
+  table.queue,table.queue tbody{display:block}
+  table.queue tr{display:grid;grid-template-columns:auto 1fr auto;grid-template-areas:"title title title" "state prog speed" "acts acts acts";gap:8px 12px;padding:12px 0;align-items:center}
+  table.queue td,table.queue td.title,table.queue td.prog{display:block;padding:0;max-width:none;width:auto}
+  table.queue td.app,table.queue td.eta{display:none}
+  table.queue td.title{grid-area:title} table.queue td.title .t{white-space:normal;overflow:visible;display:inline;line-height:1.35;overflow-wrap:anywhere} table.queue td.title .chip{margin-left:6px;vertical-align:middle}
+  table.queue td.state{grid-area:state} td.prog{grid-area:prog;width:auto;display:flex;align-items:center;gap:8px} td.prog .bar{flex:1;margin:0}
+  td.speed{grid-area:speed} td.acts{grid-area:acts}
+  .log li{grid-template-columns:70px 1fr} .log .kind{grid-column:2} .log .what{grid-column:1/-1}
 }

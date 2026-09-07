@@ -10,9 +10,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/app.css">
-<script src="/static/htmx.min.js" defer></script>
-<script src="/static/sse.js" defer></script>
+<link rel="stylesheet" href="/static/app.css?v={{.V}}">
+<script src="/static/htmx.min.js?v={{.V}}" defer></script>
+<script src="/static/sse.js?v={{.V}}" defer></script>
 </head>
 <body hx-headers='{"X-Weir-Action":"1"}' data-page="{{.Page}}">
 <div class="crest" id="crest" style="--flow:{{.Flow}}" aria-hidden="true"><i></i></div>

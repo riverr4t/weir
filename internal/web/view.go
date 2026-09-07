@@ -61,6 +61,9 @@ func rows(s *snapshot.Store, strikes []store.Strike) []Row {
 			}
 			if t, ok := q.Torrents[it.DownloadID]; ok {
 				r.State, r.Speed, r.Progress = t.State, t.DLSpeed, t.Progress
+				if looksLikeHash(r.Title) && t.Name != "" {
+					r.Title = t.Name // a magnet the arr has not resolved yet
+				}
 				if t.ETA > 0 && t.ETA < 8640000 {
 					r.ETA = t.ETA
 				}
@@ -119,4 +122,16 @@ func flow(dl int64) float64 {
 		f = 1
 	}
 	return f
+}
+
+func looksLikeHash(s string) bool {
+	if len(s) != 40 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }

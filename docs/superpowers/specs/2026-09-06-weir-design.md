@@ -49,7 +49,7 @@ Decisions made in the brainstorm, in order, so nobody relitigates them:
 
 ```
 weir/
-  cmd/weir/main.go            flag/env parsing, wiring, signal handling
+  cmd/weir/main.go            env parsing, wiring, signal handling; `weir healthcheck` subcommand
   internal/config/            env → Config struct, validation, tests
   internal/snapshot/          the shared state (§5)
   internal/apps/arr/          shared Radarr/Sonarr/Lidarr/Readarr client (v3/v1 API)
@@ -95,7 +95,7 @@ Environment only. No config file. Every variable is prefixed `WEIR_`.
 | `WEIR_<APP>_URL` | — | `RADARR SONARR LIDARR READARR PROWLARR QBIT BAZARR JELLYFIN JELLYSEERR`; an unset URL disables that app entirely (pages hide, pollers never start) |
 | `WEIR_<APP>_KEY` | — | API key for every app except qBittorrent |
 | `WEIR_QBIT_USER`, `WEIR_QBIT_PASS` | — | qBittorrent login |
-| `WEIR_APP_<APP>_PUBLIC_URL` | — | the "Open in app" link target (tailnet URL); optional |
+| `WEIR_<APP>_PUBLIC_URL` | — | the "Open in app" link target (tailnet URL); optional |
 | `WEIR_NTFY_URL`, `WEIR_NTFY_TOPIC` | — | unset disables notifications |
 | `WEIR_CLEANER_MODE` | `report` | `off`, `report`, or `act` |
 | `WEIR_CLEANER_INTERVAL` | `5m` | |
@@ -152,14 +152,22 @@ Poll plan, per app, one goroutine per row:
 `poll.Run` wraps each poller: it calls the fetch, records duration and
 outcome to metrics, and on error backs off exponentially from the base
 interval to a 5-minute cap with ±20 % jitter. On the third consecutive
-failure it sets `Down`, logs one line at `warn`, and posts one ntfy message
-at low priority; on the first success after that it clears `Down`, logs one
-line, and posts one recovery message. Panics inside a fetch are recovered,
+failure it sets `Down` and logs one line at `warn`; on the first success
+after that it clears `Down` and logs one line. Down/up transitions go to a
+notifier that **coalesces**: it waits 60 s after the first transition and
+sends one low-priority ntfy message listing every app that changed state in
+that window, so the SSD eject (seven containers stopped at once) produces
+one push, and the recovery one more. Panics inside a fetch are recovered,
 logged with the stack at `error`, and counted; the poller continues.
 
 Startup: all pollers fire immediately, then settle to their intervals.
 Pages render whatever the snapshot has, with an "updating…" state for
 zero `FetchedAt` and a stale badge showing the age when `Down`.
+
+Speed history for the overview sparkline is an in-memory ring buffer of
+the last 10 minutes of qBittorrent transfer samples (300 entries at 2 s).
+Weir reads nothing from Prometheus; its pages have no dependency on the
+monitoring stack.
 
 Memory budget: the four arr libraries at top level, for this Pi's sizes
 (hundreds of movies, tens of series, tens of artists and authors), are well
@@ -172,8 +180,9 @@ limit is 128 MB.
 One file, `weir.db`, WAL mode, `busy_timeout` 5 s, migrations as numbered
 embedded SQL applied at startup inside a transaction. Tables:
 
-- `rules` — id, name, scope (`movie|series|album|book`), enabled, action
-  (`tag|list`), tag name, conditions (JSON, §8), created/updated.
+- `rules` — id, name, scope (`movie|series|album|book`), enabled, tag
+  (nullable text: when set, matches are tagged `weir:<tag>` in the arr),
+  conditions (JSON, §8), created/updated.
 - `rule_runs` — id, rule_id, started, finished, matched count, bytes.
 - `rule_matches` — run_id, arr item id, title, path, size bytes, reason text.
 - `strikes` — download id (the arr's `downloadId`, i.e. the torrent hash),
@@ -183,7 +192,9 @@ embedded SQL applied at startup inside a transaction. Tables:
   outcome (`ok|failed`), error text.
 - `play_state` — jellyfin item id, user id, played bool, play count,
   last played at, observed at. One row per (item, user), replaced each poll.
-- `title_actions` — title key, day, count; backs the per-title action cap.
+
+The per-title action cap (§7) is a count over `actions` for the last 24 h;
+there is no separate table to keep in sync.
 
 Retention: `actions` and `rule_matches` are kept 90 days; a daily task
 prunes. Nothing here is big.
@@ -209,7 +220,7 @@ increased since last observation) clears the download's strikes. Reaching
    on the owning arr (v1 for Readarr). The arr removes the torrent and its
    partial files, blocklists the release, and searches again. Weir never
    talks to qBittorrent to delete.
-2. Log an `actions` row, increment `title_actions`, post to ntfy at default
+2. Log an `actions` row (with the title key in `detail`), post to ntfy at default
    priority with the title, condition, and a click link to Weir's downloads
    page.
 
@@ -229,7 +240,7 @@ Guards:
 
 ## 8. Library rules
 
-A rule is `{scope, conditions[], action}`. Conditions are AND-ed; each is
+A rule is `{scope, conditions[], tag?}`. Conditions are AND-ed; each is
 `{kind, args}`. Kinds, first version:
 
 | kind | args | true when |
@@ -237,7 +248,7 @@ A rule is `{scope, conditions[], action}`. Conditions are AND-ed; each is
 | `watched_by_all` | `days` | every Jellyfin user who has played it has it marked played, and none has played it in `days` |
 | `watched_by` | `users[]`, `days` | each named user has it played, none in `days` |
 | `never_played` | `days` | added to the arr more than `days` ago and no user has a play record |
-| `requester_done` | `days` | requested via Jellyseerr by user U; U has it played and no other user has played it in `days` |
+| `requester_done` | `days` | requested via Jellyseerr by user U, whose linked Jellyfin user id (Jellyseerr's `jellyfinUserId`) has it played, and no other user has played it in `days`; a request from a Jellyseerr user with no linked Jellyfin account never matches |
 | `ended_and_finished` | — | series only: Sonarr `ended`, all monitored episodes on disk, `watched_by_all` with 0 days |
 | `unmonitored` | — | the arr item is unmonitored and has files |
 | `larger_than` | `gib` | size on disk above |
@@ -255,13 +266,12 @@ movies, TVDb id for series, both of which Jellyfin exposes in
 items are reported on the rule run page as "not found in Jellyfin" and are
 never counted as never-played.
 
-Actions:
-
-- `tag` — ensure a tag named `weir:<rule tag>` exists in the arr and is on
-  every matched item; remove it from items no longer matching. This is the
-  only arr write the rule engine makes, and it is reversible from the arr UI.
-- `list` — matches are stored on the run and shown on the Rules page with
-  size and reason. Nothing is written to the arr.
+Every run stores its matches (`rule_matches`) and shows them on the Rules
+page with size and reason; that is what a rule *is*. A rule with `tag` set
+additionally ensures a tag named `weir:<tag>` exists in the arr and is on
+every matched item, and removes it from items that no longer match. That is
+the only arr write the rule engine makes, and it is reversible from the arr
+UI. A rule without `tag` writes nothing anywhere.
 
 Runs happen daily at `WEIR_RULES_AT` and on demand per rule. A run reads
 the snapshot plus `play_state`; it never fetches. Rule results feed
@@ -272,8 +282,10 @@ metrics: `weir_rule_matches{rule}` and `weir_rule_bytes{rule}`.
 **Image.** Two-stage Dockerfile: `golang:1.23-alpine` builds with
 `CGO_ENABLED=0 -trimpath -ldflags "-s -w"`; runtime is `FROM scratch` plus
 `/etc/ssl/certs`, `/usr/share/zoneinfo`, and the binary. `USER 1000:1000`.
-`EXPOSE 3004`. No healthcheck instruction (scratch has no shell); compose
-uses Kuma on `/healthz` instead.
+`EXPOSE 3004`. `HEALTHCHECK CMD ["/weir", "healthcheck"]`: the binary's
+`healthcheck` subcommand GETs `/healthz` on its own listen address and
+exits 0/1, so a scratch image with no shell still reports health to Docker.
+Kuma monitors `/healthz` externally as well.
 
 **CI.** `.github/workflows/ci.yml` on push and PR: `go vet ./...`,
 `go test ./...`, `gofmt -l` must be empty. On push to `main`: build and push
@@ -344,7 +356,7 @@ with HTTP 200 either way; an app being down is data.
 | `GET /rules`, `/rules/new`, `/rules/{id}`, `/rules/{id}/runs/{run}` | |
 | `GET /health` | indexers, subtitles, versions, Weir's own poll table |
 | `GET /events` | SSE: `speeds` every 2 s, `queue` on change, `sessions` every 15 s |
-| `GET /img/{app}/poster/{id}` | poster proxy, 24 h disk cache under `WEIR_DATA_DIR/posters` |
+| `GET /img/{app}/poster/{id}` | poster proxy, in-memory LRU capped at 32 MB, 24 h TTL, lost on restart; nothing on disk |
 | `GET /healthz`, `GET /metrics` | |
 
 Writes are `POST`, require header `X-Weir-Action: 1`, and are exactly:
@@ -370,7 +382,8 @@ system font stack, `prefers-color-scheme` respected. Installable: manifest
 and icons. Overview and Downloads subscribe to `/events` and swap only
 changed rows through HTMX's SSE extension; every other page is
 request-rendered. The rule editor is the single vanilla-JS island (~300
-lines): it manages the conditions list client-side and submits one form.
+lines): it manages the conditions list client-side and submits one form
+(name, scope, conditions, optional tag).
 "Open in app" links per page; no iframes.
 
 ## 11. Observability
@@ -406,6 +419,13 @@ rest.
   that every `POST` without `X-Weir-Action` is a 403.
 - **Gate**: `go test ./...` plus `go vet` and `gofmt`. No browser tests, no
   e2e against the Pi in CI.
+
+The implementation plan builds in slices so a useful binary reaches the Pi
+early: (1) config, snapshot, poll runner, store, web shell; (2) Radarr,
+Sonarr, qBittorrent, the downloads page and the cleaner in report mode,
+deployed on 3006; (3) Lidarr, Readarr, Jellyfin, Jellyseerr, the overview
+and requests pages; (4) the rule engine and editor; (5) Prowlarr, Bazarr,
+the health page, metrics, cutover.
 
 The first implementation task is a spike that records the fixtures against
 the live Pi and confirms that Bookshelf answers the Readarr v1 calls Weir

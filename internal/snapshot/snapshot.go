@@ -40,7 +40,3 @@ func (c *Cell[T]) SetErr(err error, down bool) {
 	c.r.Err, c.r.Down = err, down
 	c.mu.Unlock()
 }
-
-// Store is the whole snapshot: one Cell per (app, kind). App packages add
-// their typed cells here as they arrive.
-type Store struct{}

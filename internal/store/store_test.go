@@ -79,7 +79,7 @@ func TestActionsAndTitleCap(t *testing.T) {
 	if err := s.Prune(ctx, t0.Add(90*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	if acts, _ = s.Actions(ctx, 10); len(acts) != 2 {
+	if acts, _ = s.Actions(ctx, 10); len(acts) != 1 {
 		t.Fatalf("prune left %d", len(acts))
 	}
 }

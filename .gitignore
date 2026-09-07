@@ -1,0 +1,7 @@
+# local credentials — real values, never commit (template: .env.example)
+.env
+.env.*
+!.env.example
+# build output
+/weir
+/dist/

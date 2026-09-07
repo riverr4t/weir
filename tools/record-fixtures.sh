@@ -98,3 +98,4 @@ def strip(o):
 for f in glob.glob(sys.argv[1]+"/jellyfin/*.json"):
     d=json.load(open(f)); strip(d); json.dump(d,open(f,"w"))
 PY
+python3 tools/scrub-fixtures.py "$out"

@@ -56,7 +56,7 @@ weir/
   internal/apps/radarr/       thin: types + poller on top of arr
   internal/apps/sonarr/
   internal/apps/lidarr/
-  internal/apps/readarr/      Bookshelf speaks Readarr v1; verified by the first spike task
+  internal/apps/readarr/      Bookshelf speaks Readarr v1 (verified against the live Pi 2026-09-06)
   internal/apps/prowlarr/
   internal/apps/qbit/         sync/maindata delta client
   internal/apps/bazarr/
@@ -181,7 +181,8 @@ One file, `weir.db`, WAL mode, `busy_timeout` 5 s, migrations as numbered
 embedded SQL applied at startup inside a transaction. Tables:
 
 - `rules` — id, name, scope (`movie|series|album|book`), enabled, tag
-  (nullable text: when set, matches are tagged `weir:<tag>` in the arr),
+  (nullable text: when set, matches are tagged `weir-<tag>` in the arr;
+  the arrs accept only `[a-z0-9-]` in labels, so the tag is slugified),
   conditions (JSON, §8), created/updated.
 - `rule_runs` — id, rule_id, started, finished, matched count, bytes.
 - `rule_matches` — run_id, arr item id, title, path, size bytes, reason text.
@@ -268,7 +269,7 @@ never counted as never-played.
 
 Every run stores its matches (`rule_matches`) and shows them on the Rules
 page with size and reason; that is what a rule *is*. A rule with `tag` set
-additionally ensures a tag named `weir:<tag>` exists in the arr and is on
+additionally ensures a tag named `weir-<tag>` exists in the arr and is on
 every matched item, and removes it from items that no longer match. That is
 the only arr write the rule engine makes, and it is reversible from the arr
 UI. A rule without `tag` writes nothing anywhere.
@@ -323,6 +324,11 @@ Service names on the compose networks, as Homepage documents them:
 
 Prometheus scrapes `weir:3004/metrics` (one job added to
 `monitoring/prometheus`). Kuma gets an HTTP monitor on `/healthz`.
+
+**As built (2026-09-06).** Slices 1–2 followed plan 1; slices 3–5 were built
+inline the same evening. Cells for the six non-arr apps live in their own
+packages and hang off `snapshot.Store.Extra` (avoids an import cycle). Book
+scope cannot tag (Readarr keeps tags on authors); the run notes say so.
 
 **Cutover.**
 

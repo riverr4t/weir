@@ -8,8 +8,8 @@ runs two pieces of automation:
 - a **queue cleaner** that removes downloads that will never finish
   (stalled, slow, dead tracker, orphaned) through the owning arr, with a
   blocklist and a fresh search, and
-- **library rules** that tag and list media matching conditions such as
-  "watched by everyone and untouched for 90 days".
+- **library rules** that tag (`weir-<tag>` in the arr) and list media matching
+  conditions such as "watched by everyone and untouched for 90 days".
 
 **Weir never deletes anything that has been downloaded.** There is no delete
 route and no delete code path for library media. The only removal it ever

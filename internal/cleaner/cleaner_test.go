@@ -198,6 +198,19 @@ func TestProgressClearsStrikes(t *testing.T) {
 	}
 }
 
+func TestSeasonPackIsJudgedOnce(t *testing.T) {
+	h := newHarness(t, "act")
+	pack := []arr.QueueItem{item(1, "h", 500), item(2, "h", 500), item(3, "h", 500)}
+	pack[1].EpisodeID, pack[2].EpisodeID = 11, 12
+	h.snap.Radarr.Queue.SetOK(pack, t0)
+	h.snap.Qbit.SetOK(qbit.State{Torrents: map[string]qbit.Torrent{"h": {Hash: "h", State: "stalledDL", Downloaded: 500}}}, t0)
+	h.c.prev["h"] = obs{Downloaded: 500, LastProgress: t0.Add(-time.Hour)}
+	ds, err := h.c.Evaluate(context.Background(), t0)
+	if err != nil || len(ds) != 1 || ds[0].Strikes != 1 {
+		t.Fatalf("want one decision with one strike, got %+v %v", ds, err)
+	}
+}
+
 func TestPerTitleCap(t *testing.T) {
 	h := newHarness(t, "act")
 	ctx := context.Background()

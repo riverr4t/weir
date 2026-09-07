@@ -80,7 +80,8 @@ func (c *Cleaner) Evaluate(ctx context.Context, now time.Time) ([]Decision, erro
 			continue
 		}
 		for _, item := range q.Data {
-			if item.DownloadID == "" {
+			// a season pack is one torrent behind many queue items; judge it once
+			if item.DownloadID == "" || seen[item.DownloadID] {
 				continue
 			}
 			seen[item.DownloadID] = true

@@ -78,8 +78,11 @@ func (c *Client) login(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 64))
-	if resp.StatusCode != 200 || strings.TrimSpace(string(b)) != "Ok." {
-		return fmt.Errorf("qbit login: %s %q", resp.Status, strings.TrimSpace(string(b)))
+	body := strings.TrimSpace(string(b))
+	// qBittorrent 4.x answers 200 "Ok." / 200 "Fails."; 5.2 answers 204 with
+	// only the cookie. A 2xx without a session cookie is a refused login.
+	if resp.StatusCode/100 != 2 || body == "Fails." || len(resp.Cookies()) == 0 {
+		return fmt.Errorf("qbit login: %s %q", resp.Status, body)
 	}
 	c.loggedIn = true
 	return nil

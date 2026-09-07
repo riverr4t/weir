@@ -26,7 +26,7 @@ func server(t *testing.T) (*httptest.Server, *[]string) {
 			}
 			loggedIn = true
 			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "s", Path: "/"})
-			w.Write([]byte("Ok."))
+			w.WriteHeader(204) // qBittorrent 5.2 style: cookie only, no body
 		case !loggedIn || cookie(r) != "s":
 			w.WriteHeader(403)
 		case r.URL.Path == "/api/v2/sync/maindata":

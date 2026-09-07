@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -52,8 +53,8 @@ func TestRadarrReads(t *testing.T) {
 		t.Fatalf("queue: %v", err)
 	}
 	for _, it := range q {
-		if it.Title == "" || it.DownloadID == "" {
-			t.Fatalf("queue item missing fields: %+v", it)
+		if it.Title == "" || it.DownloadID == "" || it.DownloadID != strings.ToLower(it.DownloadID) {
+			t.Fatalf("queue item missing fields or upper-case hash: %+v", it)
 		}
 	}
 	st, err := c.SystemStatus(ctx)

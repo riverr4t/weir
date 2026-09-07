@@ -23,6 +23,7 @@ type Row struct {
 	InTrouble bool    `json:"inTrouble"`
 	Paused    bool    `json:"paused"`
 	Message   string  `json:"message"`
+	Items     int     `json:"items"` // arr queue items sharing this torrent (a season pack is many episodes)
 }
 
 var arrOrder = []string{"radarr", "sonarr", "lidarr", "readarr"}
@@ -34,13 +35,21 @@ func rows(s *snapshot.Store, strikes []store.Strike) []Row {
 		byHash[st.DownloadID] += st.Count
 	}
 	var out []Row
+	index := map[string]int{} // app+hash -> row
 	for _, app := range arrOrder {
 		cells := s.Arr(app)
 		if cells == nil {
 			continue
 		}
 		for _, it := range cells.Queue.Get().Data {
-			r := Row{App: app, QueueID: it.ID, Title: it.Title, Hash: it.DownloadID, Strikes: byHash[it.DownloadID], ETA: -1}
+			if i, ok := index[app+"/"+it.DownloadID]; ok && it.DownloadID != "" {
+				out[i].Items++
+				if out[i].Message == "" && len(it.StatusMessages) > 0 && len(it.StatusMessages[0].Messages) > 0 {
+					out[i].Message = it.StatusMessages[0].Messages[0]
+				}
+				continue
+			}
+			r := Row{App: app, QueueID: it.ID, Title: it.Title, Hash: it.DownloadID, Strikes: byHash[it.DownloadID], ETA: -1, Items: 1}
 			if it.Size > 0 {
 				r.Progress = 1 - it.SizeLeft/it.Size
 			}
@@ -69,6 +78,7 @@ func rows(s *snapshot.Store, strikes []store.Strike) []Row {
 			if r.Strikes > 0 {
 				r.InTrouble = true
 			}
+			index[app+"/"+it.DownloadID] = len(out)
 			out = append(out, r)
 		}
 	}

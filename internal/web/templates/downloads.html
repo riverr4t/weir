@@ -20,7 +20,7 @@
 <table class="queue">
 {{range .Rows}}<tr class="{{if .InTrouble}}trouble{{end}} {{if .Completed}}done{{end}}">
   <td class="app"><span class="dot {{if .InTrouble}}amber{{else if .Completed}}up{{end}}"></span>{{.App}}</td>
-  <td class="title"><span class="t" title="{{.Title}}">{{.Title}}</span>{{if .Message}}<div class="msg">{{.Message}}</div>{{end}}</td>
+  <td class="title"><span class="t" title="{{.Title}}">{{.Title}}</span>{{if gt .Items 1}}<span class="chip">{{.Items}} episodes</span>{{end}}{{if .Message}}<div class="msg">{{.Message}}</div>{{end}}</td>
   <td class="state">{{.State}}{{if .Strikes}}<span class="strikes">{{.Strikes}}✕</span>{{end}}</td>
   <td class="prog"><div class="bar"><i style="width:{{pct .Progress}}"></i></div><span>{{pct .Progress}}</span></td>
   <td class="speed">{{if .Speed}}{{bytes .Speed}}/s{{end}}</td>

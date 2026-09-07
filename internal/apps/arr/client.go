@@ -60,6 +60,10 @@ func (c *Client) Queue(ctx context.Context) ([]QueueItem, error) {
 		Records []QueueItem `json:"records"`
 	}
 	err := c.Get(ctx, "/queue?page=1&pageSize=1000&includeUnknownMovieItems=true&includeUnknownSeriesItems=true&includeUnknownAuthorItems=true&includeUnknownArtistItems=true", &page)
+	for i := range page.Records {
+		// the arrs report torrent hashes in upper case; qBittorrent keys them in lower case
+		page.Records[i].DownloadID = strings.ToLower(page.Records[i].DownloadID)
+	}
 	return page.Records, err
 }
 

@@ -1,0 +1,41 @@
+{{define "content"}}
+{{with .Overview}}
+<section class="head">
+  <div><h1>Overview</h1><div class="sub">{{.QueueCount}} downloading{{if .Trouble}} · <span class="amber">{{.Trouble}} in trouble</span>{{end}} · {{.Counts.Movies}} movies · {{.Counts.Series}} series{{if .Counts.Artists}} · {{.Counts.Artists}} artists{{end}}{{if .Counts.Authors}} · {{.Counts.Authors}} authors{{end}}</div></div>
+</section>
+<div id="live" hx-ext="sse" sse-connect="/events" sse-swap="overview">{{template "overview-live" $}}</div>
+<div class="grid two">
+  <section class="card">
+    <h2>Needs attention</h2>
+    {{if not .Warnings}}<p class="muted">Every app is healthy.</p>{{end}}
+    <ul class="rows">{{range .Warnings}}<li><span class="chip {{if eq .Type "error"}}down{{else}}warn{{end}}">{{.App}}</span><span>{{.Message}}</span>{{if .Wiki}}<a class="r" href="{{.Wiki}}" target="_blank" rel="noopener">wiki ↗</a>{{end}}</li>{{end}}</ul>
+  </section>
+  <section class="card">
+    <h2>Waiting for approval</h2>
+    {{if not .Pending}}<p class="muted">No pending requests.</p>{{end}}
+    <ul class="rows">{{range .Pending}}<li><span class="chip">{{.Type}}</span><span>{{.Title}} <span class="muted">· {{.By}}</span></span>
+      <span class="r"><button class="primary" hx-post="/requests/{{.ID}}/approve" hx-target="#live" hx-swap="none">Approve</button> <button hx-post="/requests/{{.ID}}/decline" hx-swap="none">Decline</button></span></li>{{end}}</ul>
+    {{if .Pending}}<p class="muted" style="margin:10px 0 0;font-size:12px">More on the <a href="/requests" style="color:var(--foam)">Requests</a> page.</p>{{end}}
+  </section>
+  <section class="card">
+    <h2>Space</h2>
+    {{if not .Disks}}<p class="muted">No disk data yet.</p>{{end}}
+    {{range .Disks}}<div class="disk"><div class="row"><span class="mono">{{.Path}}</span><span class="r">{{bytes .Free}} free of {{bytes .Total}}</span></div><div class="bar"><i style="width:{{printf "%.0f" .UsedPct}}%" class="{{if gt .UsedPct 90.0}}rust{{else if gt .UsedPct 80.0}}amber{{end}}"></i></div></div>{{end}}
+  </section>
+  <section class="card">
+    <h2>Watching now</h2>
+    {{if not .Playing}}<p class="muted">Nobody is watching.</p>{{end}}
+    <ul class="rows">{{range .Playing}}<li><span class="chip up">{{.User}}</span><span>{{.Title}}{{if .Sub}} <span class="muted">· {{.Sub}}</span>{{end}}</span><span class="r">{{if .Paused}}paused · {{end}}{{printf "%.0f" .Pct}}% · {{.Device}}</span></li>{{end}}</ul>
+  </section>
+  <section class="card">
+    <h2>Missing</h2>
+    <div class="grid two"><div class="stat"><b>{{.Missing.Movies}}</b><span>movies wanted</span></div><div class="stat"><b>{{.Missing.Episodes}}</b><span>episodes wanted</span></div></div>
+  </section>
+  <section class="card">
+    <h2>The week ahead</h2>
+    {{if not .Upcoming}}<p class="muted">Nothing on the calendar.</p>{{end}}
+    <ul class="rows">{{range .Upcoming}}<li><span class="when mono muted" style="width:82px;font-size:12px">{{.Date}}</span><span class="chip {{if .HasFile}}up{{end}}">{{.App}}</span><span>{{.Title}}{{if .Sub}} <span class="muted">· {{.Sub}}</span>{{end}}</span></li>{{end}}</ul>
+  </section>
+</div>
+{{end}}
+{{end}}

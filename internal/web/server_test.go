@@ -138,3 +138,85 @@ func TestHealthzAndMetrics(t *testing.T) {
 		t.Fatal("static")
 	}
 }
+
+func TestOverviewRenders(t *testing.T) {
+	h, _, _, _ := testServer(t)
+	w := do(h, "GET", "/", nil)
+	body := w.Body.String()
+	if w.Code != 200 || !strings.Contains(body, "Overview") || !strings.Contains(body, `sse-swap="overview"`) || !strings.Contains(body, "Film") {
+		t.Fatalf("code %d, len %d", w.Code, len(body))
+	}
+	if w := do(h, "GET", "/api/overview", nil); w.Code != 200 || !strings.Contains(w.Body.String(), `"queueCount"`) {
+		t.Fatalf("api overview: %d %.120s", w.Code, w.Body.String())
+	}
+}
+
+func TestLibraryRequestsHealthRender(t *testing.T) {
+	h, snap, _, _ := testServer(t)
+	snap.RadarrMovies.SetOK([]arr.Movie{{ID: 3, Title: "Film", Year: 1992, TmdbID: 9273, HasFile: true, SizeOnDisk: 5 << 30}}, time.Now())
+	for _, path := range []string{"/library/radarr", "/library/sonarr", "/health", "/api/library/radarr", "/api/health"} {
+		if w := do(h, "GET", path, nil); w.Code != 200 {
+			t.Fatalf("%s: %d %.200s", path, w.Code, w.Body.String())
+		}
+	}
+	if w := do(h, "GET", "/library/lidarr", nil); w.Code != 404 {
+		t.Fatalf("disabled app must 404, got %d", w.Code)
+	}
+	if w := do(h, "GET", "/library/radarr", nil); !strings.Contains(w.Body.String(), "Film") || !strings.Contains(w.Body.String(), "/img/radarr/3") {
+		t.Fatal("library page should list the movie with its poster")
+	}
+	if w := do(h, "POST", "/library/radarr/search-missing", act); w.Code != 200 {
+		t.Fatalf("search-missing: %d %s", w.Code, w.Body.String())
+	}
+	if w := do(h, "GET", "/requests", nil); w.Code != 200 {
+		t.Fatalf("requests without jellyseerr configured should still render, got %d", w.Code)
+	}
+	if w := do(h, "POST", "/requests/1/approve", act); w.Code != 503 {
+		t.Fatalf("approve without jellyseerr should be 503, got %d", w.Code)
+	}
+}
+
+func TestPosterURLPrefersSmallTMDb(t *testing.T) {
+	got := posterURL([]arr.Image{{CoverType: "fanart", RemoteURL: "https://image.tmdb.org/t/p/original/f.jpg"}, {CoverType: "poster", RemoteURL: "https://image.tmdb.org/t/p/original/p.jpg"}})
+	if got != "https://image.tmdb.org/t/p/w342/p.jpg" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestRulesPagesAndSave(t *testing.T) {
+	h, _, _, _ := testServer(t)
+	for _, path := range []string{"/rules", "/rules/new"} {
+		if w := do(h, "GET", path, nil); w.Code != 200 {
+			t.Fatalf("%s: %d", path, w.Code)
+		}
+	}
+	form := "name=Stale&scope=movie&tag=stale&enabled=on&conditions=" + `[{"kind":"never_played","days":90}]`
+	r := httptest.NewRequest("POST", "/rules", strings.NewReader(form))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("X-Weir-Action", "1")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 303 || !strings.HasPrefix(w.Header().Get("Location"), "/rules/") {
+		t.Fatalf("save: %d %s %.200s", w.Code, w.Header().Get("Location"), w.Body.String())
+	}
+	loc := w.Header().Get("Location")
+	if w := do(h, "GET", loc, nil); w.Code != 200 || !strings.Contains(w.Body.String(), "Stale") {
+		t.Fatalf("edit page: %d", w.Code)
+	}
+	// a condition that does not fit the scope is refused
+	bad := "name=X&scope=movie&conditions=" + `[{"kind":"ended_and_finished"}]`
+	r = httptest.NewRequest("POST", "/rules", strings.NewReader(bad))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("X-Weir-Action", "1")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 422 {
+		t.Fatalf("bad scope condition should be 422, got %d", w.Code)
+	}
+	if w := do(h, "GET", "/api/rules", nil); w.Code != 200 || !strings.Contains(w.Body.String(), "Stale") {
+		t.Fatal("api rules")
+	}
+	if w := do(h, "POST", loc+"/run", act); w.Code != 503 {
+		t.Fatalf("run without a runner should be 503, got %d", w.Code)
+	}
+}

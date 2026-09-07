@@ -1,0 +1,13 @@
+{{define "content"}}
+{{with .RuleRun}}
+<section class="head">
+  <div><h1>{{.Rule.Name}}</h1><div class="sub"><a href="/rules">Rules</a> · run {{ago .Run.Started $.Now}} · {{.Run.Matched}} matched · {{bytes .Run.Bytes}}{{if .Run.Tagged}} · {{.Run.Tagged}} newly tagged{{end}}</div></div>
+  <a class="btn" href="/rules/{{.Rule.ID}}">Edit rule</a>
+</section>
+{{if .Run.Note}}<div class="needs"><b>Note.</b> {{.Run.Note}}</div>{{end}}
+{{if not .Matches}}<p class="empty">Nothing matched.</p>{{else}}
+<section class="card"><ul class="rows">{{range .Matches}}<li><span>{{.Title}}<div class="muted" style="font-size:12px;white-space:normal">{{.Reason}}{{if .Path}} · <span class="mono">{{.Path}}</span>{{end}}</div></span><span class="r">{{bytes .Size}}</span></li>{{end}}</ul></section>
+<p class="muted" style="font-size:12px">This is a list. Weir does not delete; if you want any of these gone, do it in the app.</p>
+{{end}}
+{{end}}
+{{end}}

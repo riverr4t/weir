@@ -1,0 +1,60 @@
+{{define "content"}}
+{{with .RuleEdit}}
+<section class="head">
+  <div><h1>{{if .IsNew}}New rule{{else}}{{.Rule.Name}}{{end}}</h1><div class="sub"><a href="/rules">Rules</a>{{if not .IsNew}} · created {{ago .Rule.CreatedAt $.Now}}{{end}}</div></div>
+  {{if not .IsNew}}<div class="actions"><button hx-post="/rules/{{.Rule.ID}}/run" hx-swap="none" hx-on::after-request="if(event.detail.successful)location.href=event.detail.xhr.responseURL||location.href">Run now</button>
+  <button class="danger" hx-post="/rules/{{.Rule.ID}}/delete" hx-swap="none" hx-confirm="Delete this rule? (Only the rule. Media is never touched.)" hx-on::after-request="location.href='/rules'">Delete rule</button></div>{{end}}
+</section>
+{{if .Error}}<div class="needs"><b>{{.Error}}</b></div>{{end}}
+<form method="post" action="{{if .IsNew}}/rules{{else}}/rules/{{.Rule.ID}}{{end}}" class="card rule-form" id="rule-form" hx-boost="true" hx-target="body">
+  <input type="hidden" name="conditions" id="conditions" value="">
+  <div class="grid two">
+    <label>Name<input type="text" name="name" value="{{.Rule.Name}}" required placeholder="Stale movies"></label>
+    <label>Scope<select name="scope" id="scope">{{range .Scopes}}<option value="{{.}}" {{if eq (print .) $.RuleEdit.Rule.Scope}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+  </div>
+  <div class="grid two">
+    <label>Tag in the arr <span class="muted">(optional; written as weir-&lt;tag&gt;, removed when an item stops matching)</span><input type="text" name="tag" value="{{.Rule.Tag}}" placeholder="stale"></label>
+    <label class="check"><input type="checkbox" name="enabled" {{if .Rule.Enabled}}checked{{end}}> Enabled (runs nightly)</label>
+  </div>
+  <h2>Conditions <span class="muted">· all must hold</span></h2>
+  <div id="conds"></div>
+  <div class="cond-add"><select id="add-kind"></select> <button type="button" id="add">Add condition</button></div>
+  <div class="form-acts"><button class="primary" type="submit">Save rule</button> <a class="btn" href="/rules">Cancel</a></div>
+</form>
+<script id="kinds" type="application/json">{{json .Kinds}}</script>
+<script id="initial" type="application/json">{{json .Conds}}</script>
+<script id="users" type="application/json">{{json .Users}}</script>
+<script>
+(function(){
+  const kinds=JSON.parse(document.getElementById('kinds').textContent);
+  const users=JSON.parse(document.getElementById('users').textContent)||[];
+  let conds=JSON.parse(document.getElementById('initial').textContent)||[];
+  const scope=document.getElementById('scope'), list=document.getElementById('conds'), addKind=document.getElementById('add-kind');
+  const byKind=Object.fromEntries(kinds.map(k=>[k.Kind,k]));
+  function allowed(k){return byKind[k]&&byKind[k].Scopes.includes(scope.value);}
+  function fillKinds(){addKind.innerHTML='';kinds.filter(k=>k.Scopes.includes(scope.value)).forEach(k=>{const o=document.createElement('option');o.value=k.Kind;o.textContent=k.Label;addKind.appendChild(o);});}
+  function field(c,i,arg){
+    if(arg==='days')return `<label>days<input type="number" min="0" value="${c.days||0}" data-i="${i}" data-arg="days"></label>`;
+    if(arg==='gib')return `<label>GiB<input type="number" min="0" step="0.5" value="${c.gib||0}" data-i="${i}" data-arg="gib"></label>`;
+    if(arg==='tag')return `<label>tag<input type="text" value="${(c.tag||'').replace(/"/g,'&quot;')}" data-i="${i}" data-arg="tag"></label>`;
+    if(arg==='users')return `<label>users<span class="users">${users.map(u=>`<label class="check"><input type="checkbox" value="${u}" data-i="${i}" data-arg="users" ${(c.users||[]).includes(u)?'checked':''}> ${u}</label>`).join('')||'<span class="muted">no Jellyfin users known</span>'}</span></label>`;
+    return '';
+  }
+  function render(){
+    list.innerHTML='';
+    conds.forEach((c,i)=>{const k=byKind[c.kind];const row=document.createElement('div');row.className='cond'+(allowed(c.kind)?'':' bad');
+      row.innerHTML=`<div class="ck"><b>${k?k.Label:c.kind}</b>${allowed(c.kind)?'':' <span class="chip warn">not for this scope</span>'}<div class="muted">${k?k.Help:''}</div></div><div class="cargs">${(k?k.Args||[]:[]).map(a=>field(c,i,a)).join('')}</div><button type="button" class="rm" data-i="${i}" title="Remove">×</button>`;
+      list.appendChild(row);});
+    if(!conds.length)list.innerHTML='<p class="muted">No conditions yet. Add one below.</p>';
+    document.getElementById('conditions').value=JSON.stringify(conds);
+  }
+  list.addEventListener('input',e=>{const i=+e.target.dataset.i,a=e.target.dataset.arg;if(a==='users'){conds[i].users=[...list.querySelectorAll(`input[data-i="${i}"][data-arg=users]:checked`)].map(x=>x.value);}else if(a==='days'){conds[i].days=+e.target.value;}else if(a==='gib'){conds[i].gib=+e.target.value;}else if(a==='tag'){conds[i].tag=e.target.value;}document.getElementById('conditions').value=JSON.stringify(conds);});
+  list.addEventListener('click',e=>{if(e.target.classList.contains('rm')){conds.splice(+e.target.dataset.i,1);render();}});
+  document.getElementById('add').addEventListener('click',()=>{const k=addKind.value;const c={kind:k};if((byKind[k].Args||[]).includes('days'))c.days=90;if((byKind[k].Args||[]).includes('gib'))c.gib=10;conds.push(c);render();});
+  scope.addEventListener('change',()=>{fillKinds();render();});
+  document.getElementById('rule-form').addEventListener('submit',()=>{document.getElementById('conditions').value=JSON.stringify(conds);});
+  fillKinds();render();
+})();
+</script>
+{{end}}
+{{end}}

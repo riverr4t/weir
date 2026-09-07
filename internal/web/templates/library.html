@@ -1,0 +1,28 @@
+{{define "content"}}
+{{with .Library}}
+<section class="head">
+  <div><h1>{{.Label}}</h1><div class="sub">{{.Total}} {{.Kind}}{{if ne .Total 1}}s{{end}} · {{.OnDisk}} on disk · {{bytes .Size}}{{if .Stale}}<span class="stale">stale</span>{{end}}</div></div>
+  <div class="actions">
+    <span id="search-state"></span>
+    <button hx-post="/library/{{.App}}/search-missing" hx-target="#search-state" hx-swap="innerHTML">Search missing</button>
+    {{if $.PublicURL}}<a class="btn" href="{{$.PublicURL}}" target="_blank" rel="noopener">Open {{.App}} ↗</a>{{end}}
+  </div>
+</section>
+<div class="grid three stats">
+  <div class="card stat"><b>{{.Missing}}</b><span>wanted, missing</span></div>
+  <div class="card stat"><b>{{.Cutoff}}</b><span>below cutoff</span></div>
+  <div class="card stat"><b>{{.Unmonitored}}</b><span>unmonitored</span></div>
+</div>
+{{if .Health}}<section class="card"><h2>Health</h2><ul class="rows">{{range .Health}}<li><span class="chip {{if eq .Type "error"}}down{{else}}warn{{end}}">{{.Type}}</span><span>{{.Message}}</span></li>{{end}}</ul></section>{{end}}
+<section>
+  <h2>Recently added</h2>
+  {{if not .Recent}}<p class="empty">Nothing here yet.</p>{{end}}
+  <div class="posters">{{range .Recent}}<a class="poster {{if not .HasFile}}nofile{{end}}" href="{{$.PublicURL}}" title="{{.Title}}"><img src="{{.Img}}" alt="" loading="lazy"><span>{{.Title}}{{if .Sub}}<br><small>{{.Sub}}</small>{{end}}</span></a>{{end}}</div>
+</section>
+<section class="card">
+  <h2>Wanted <span class="muted">· {{.WantedTotal}} missing</span></h2>
+  {{if not .Wanted}}<p class="muted">Nothing is missing.</p>{{end}}
+  <ul class="rows">{{range .Wanted}}<li><span>{{if .Series}}{{.Series.Title}} <span class="muted">· {{.SeasonNumber}}×{{printf "%02d" .EpisodeNumber}} {{.Title}}</span>{{else}}{{.Title}}{{if .Year}} <span class="muted">{{.Year}}</span>{{end}}{{end}}</span><span class="r">{{.AirDate}}</span></li>{{end}}</ul>
+</section>
+{{end}}
+{{end}}

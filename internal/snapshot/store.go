@@ -17,14 +17,19 @@ type ArrCells struct {
 	Cutoff   Cell[arr.Wanted]
 }
 
-// Store is the whole snapshot: one Cell per (app, kind). App packages add
-// their typed cells here as they arrive.
+// Store is the whole snapshot: one Cell per (app, kind). Apps whose types
+// live in their own package (lidarr, readarr, prowlarr, bazarr, jellyfin,
+// jellyseerr) keep their cells there and hang them off Extra to avoid an
+// import cycle; main wires them.
 type Store struct {
 	Radarr       ArrCells
 	RadarrMovies Cell[[]arr.Movie]
 	Sonarr       ArrCells
 	SonarrSeries Cell[[]arr.Series]
+	Lidarr       ArrCells
+	Readarr      ArrCells
 	Qbit         Cell[qbit.State]
+	Extra        map[string]any // "lidarr" -> *lidarr.Cells etc.; set once at startup, read-only after
 }
 
 // Arr returns the shared cells for a named arr app, or nil.
@@ -34,6 +39,10 @@ func (s *Store) Arr(app string) *ArrCells {
 		return &s.Radarr
 	case "sonarr":
 		return &s.Sonarr
+	case "lidarr":
+		return &s.Lidarr
+	case "readarr":
+		return &s.Readarr
 	}
 	return nil
 }

@@ -1,0 +1,16 @@
+{{define "content"}}
+<section class="head">
+  <div><h1>Rules</h1><div class="sub">Rules tag and list. Nothing here can delete anything.</div></div>
+  <a class="btn primary" href="/rules/new">New rule</a>
+</section>
+{{with .Rules}}
+{{if not .Rules}}<p class="empty">No rules yet. A rule finds media matching conditions such as “watched by everyone and untouched for 90 days”, then lists it here and, if you like, tags it in the arr.</p>{{end}}
+<ul class="rules">{{range .Rules}}<li class="card {{if not .Enabled}}off{{end}}">
+  <div class="rtitle"><a href="/rules/{{.ID}}"><b>{{.Name}}</b></a> <span class="chip">{{.Scope}}</span>{{if .Tag}} <span class="chip up">weir-{{.Tag}}</span>{{end}}{{if not .Enabled}} <span class="chip">paused</span>{{end}}</div>
+  <div class="rsum muted">{{.Summary}}</div>
+  <div class="rlast">{{with .Last}}<a href="/rules/{{.RuleID}}/runs/{{.ID}}">{{.Matched}} matched · {{bytes .Bytes}}</a> <span class="muted">· {{ago .Started $.Now}}</span>{{else}}<span class="muted">never run</span>{{end}}</div>
+  <div class="racts"><button hx-post="/rules/{{.ID}}/run" hx-swap="none" hx-on::after-request="if(event.detail.successful)location.reload()">Run now</button>
+    {{if .Enabled}}<button hx-post="/rules/{{.ID}}/disable" hx-swap="none" hx-on::after-request="location.reload()">Pause</button>{{else}}<button hx-post="/rules/{{.ID}}/enable" hx-swap="none" hx-on::after-request="location.reload()">Resume</button>{{end}}</div>
+</li>{{end}}</ul>
+{{end}}
+{{end}}

@@ -33,6 +33,18 @@ func (h *Hub) Broadcast(event, data string) {
 	h.m.SSEClients.Set(float64(len(h.clients)))
 }
 
+// Close drops every client so a graceful server shutdown does not wait on
+// long-lived event streams.
+func (h *Hub) Close() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for ch := range h.clients {
+		delete(h.clients, ch)
+		close(ch)
+	}
+	h.m.SSEClients.Set(0)
+}
+
 func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fl, ok := w.(http.Flusher)
 	if !ok {

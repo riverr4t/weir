@@ -1,0 +1,42 @@
+{{define "speeds"}}<span class="dl">↓ <b>{{bytes .DL}}</b>/s</span><span class="up">↑ <b>{{bytes .UP}}</b>/s</span>{{end}}
+
+{{define "rows"}}
+{{if not .Rows}}<p class="empty">Nothing is downloading. The weir is quiet.</p>{{else}}
+<table class="queue">
+{{range .Rows}}<tr class="{{if .InTrouble}}trouble{{end}} {{if .Completed}}done{{end}}">
+  <td class="app"><span class="dot {{if .InTrouble}}amber{{else if .Completed}}up{{end}}"></span>{{.App}}</td>
+  <td class="title"><span class="t" title="{{.Title}}">{{.Title}}</span>{{if gt .Items 1}}<span class="chip">{{.Items}} episodes</span>{{end}}{{if .Message}}<div class="msg">{{.Message}}</div>{{end}}</td>
+  <td class="state">{{.State}}{{if .Strikes}}<span class="strikes">{{.Strikes}}✕</span>{{end}}</td>
+  <td class="prog"><div class="bar"><i style="width:{{pct .Progress}}"></i></div><span>{{pct .Progress}}</span></td>
+  <td class="speed">{{if .Speed}}{{bytes .Speed}}/s{{end}}</td>
+  <td class="eta">{{eta .ETA}}</td>
+  <td class="acts">
+    {{if not .Completed}}
+      {{if .Paused}}<button hx-post="/downloads/{{.Hash}}/resume" hx-target="#rows">Resume</button>
+      {{else}}<button hx-post="/downloads/{{.Hash}}/pause" hx-target="#rows">Pause</button>{{end}}
+      <button class="danger" hx-post="/downloads/{{.Hash}}/blocklist" hx-target="#rows" hx-confirm="Remove this download, blocklist the release and search again?">Blocklist</button>
+    {{end}}
+  </td>
+</tr>{{end}}
+</table>{{end}}
+{{end}}
+
+{{define "overview-live"}}{{with .Overview}}
+<section class="card flow">
+  <div class="speeds big"><span class="dl">↓ <b>{{bytes .DL}}</b>/s</span><span class="up">↑ <b>{{bytes .UP}}</b>/s</span></div>
+  <svg class="spark" viewBox="0 0 160 28" preserveAspectRatio="none" aria-hidden="true"><path d="{{.SparkUP}}" class="up"/><path d="{{.SparkDL}}" class="dl"/></svg>
+  <div class="active">
+    {{if not .Active}}<span class="muted">Nothing moving right now.</span>{{end}}
+    {{range .Active}}<div class="arow"><span class="t">{{.Title}}</span><span class="mono">{{pct .Progress}}</span><span class="mono dl">{{bytes .Speed}}/s</span><span class="mono muted">{{eta .ETA}}</span></div>{{end}}
+  </div>
+</section>
+{{end}}{{end}}
+
+{{define "search-results"}}
+{{if and .Query (not .Search)}}<p class="muted" style="margin:12px 0 0">Nothing found for “{{.Query}}”.</p>{{end}}
+{{if .Search}}<ul class="results">{{range .Search}}<li>
+  <div class="thumb">{{if .Img}}<img src="{{.Img}}" alt="" loading="lazy">{{end}}</div>
+  <div class="body"><b>{{.Title}}</b> <span class="muted">{{.Year}} · {{.Type}}</span><p>{{.Overview}}</p></div>
+  <div class="act">{{if eq .State "here"}}<span class="chip up">Already here</span>{{else if eq .State "requested"}}<span class="chip warn">Requested</span>{{else}}<button class="primary" hx-post="/requests" hx-vals='{"mediaType":"{{.Type}}","mediaId":"{{.ID}}","title":"{{.Title}}"}' hx-target="this" hx-swap="outerHTML">Request</button>{{end}}</div>
+</li>{{end}}</ul>{{end}}
+{{end}}

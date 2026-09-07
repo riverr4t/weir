@@ -16,8 +16,11 @@ import (
 	"time"
 
 	"github.com/riverr4t/weir/internal/apps/arr"
+	"github.com/riverr4t/weir/internal/apps/jellyfin"
+	"github.com/riverr4t/weir/internal/apps/jellyseerr"
 	"github.com/riverr4t/weir/internal/config"
 	"github.com/riverr4t/weir/internal/metrics"
+	"github.com/riverr4t/weir/internal/rules"
 	"github.com/riverr4t/weir/internal/snapshot"
 	"github.com/riverr4t/weir/internal/store"
 )
@@ -42,14 +45,20 @@ type Deps struct {
 	M           *metrics.M
 	Arrs        map[string]*arr.Client
 	Qbit        QbitControl
+	Jellyfin    *jellyfin.Client
+	Jellyseerr  *jellyseerr.Client
+	Rules       *rules.Runner
 	CleanerMode string
 	Now         func() time.Time
 }
 
 type Server struct {
 	Deps
-	Hub *Hub
-	tpl *template.Template
+	Hub     *Hub
+	History *History
+	posters *posterCache
+	pages   map[string]*template.Template // one set per page: layout + partials + the page
+	parts   *template.Template            // partials alone, for fragments
 }
 
 func New(d Deps) *Server {
@@ -59,8 +68,17 @@ func New(d Deps) *Server {
 	if d.CleanerMode == "" {
 		d.CleanerMode = d.Cfg.Cleaner.Mode
 	}
-	s := &Server{Deps: d, Hub: NewHub(d.M)}
-	s.tpl = template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/*.html"))
+	s := &Server{Deps: d, Hub: NewHub(d.M), History: NewHistory(300), posters: newPosterCache(32 << 20)}
+	s.parts = template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/partials.html"))
+	s.pages = map[string]*template.Template{}
+	entries, _ := fs.ReadDir(templateFS, "templates")
+	for _, e := range entries {
+		n := e.Name()
+		if n == "layout.html" || n == "partials.html" {
+			continue
+		}
+		s.pages[n] = template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/partials.html", "templates/"+n))
+	}
 	return s
 }
 
@@ -71,7 +89,32 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) })
 	mux.Handle("GET /metrics", s.M.Handler())
 	mux.Handle("GET /events", s.Hub)
-	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/downloads", http.StatusFound) })
+	mux.HandleFunc("GET /{$}", s.overview)
+	mux.HandleFunc("GET /overview/live", s.overviewLive)
+	mux.HandleFunc("GET /api/overview", s.apiOverview)
+	mux.HandleFunc("GET /img/{app}/{id}", s.poster)
+	mux.HandleFunc("GET /library/{app}", s.library)
+	mux.HandleFunc("GET /api/library/{app}", s.apiLibrary)
+	mux.Handle("POST /library/jellyfin/scan", requireAction(http.HandlerFunc(s.jellyfinScan)))
+	mux.Handle("POST /library/{app}/search-missing", requireAction(http.HandlerFunc(s.searchMissing)))
+	mux.HandleFunc("GET /requests", s.requests)
+	mux.HandleFunc("GET /requests/search", s.searchFragment)
+	mux.Handle("POST /requests", requireAction(http.HandlerFunc(s.request)))
+	mux.Handle("POST /requests/{id}/approve", requireAction(s.requestDecision("approve")))
+	mux.Handle("POST /requests/{id}/decline", requireAction(s.requestDecision("decline")))
+	mux.HandleFunc("GET /rules", s.rulesPage)
+	mux.HandleFunc("GET /rules/new", s.ruleEdit)
+	mux.HandleFunc("GET /rules/{id}", s.ruleEdit)
+	mux.HandleFunc("GET /rules/{id}/runs/{run}", s.ruleRunPage)
+	mux.HandleFunc("GET /api/rules", s.apiRules)
+	mux.Handle("POST /rules", requireAction(http.HandlerFunc(s.ruleSave)))
+	mux.Handle("POST /rules/{id}", requireAction(http.HandlerFunc(s.ruleSave)))
+	mux.Handle("POST /rules/{id}/enable", requireAction(s.ruleToggle(true)))
+	mux.Handle("POST /rules/{id}/disable", requireAction(s.ruleToggle(false)))
+	mux.Handle("POST /rules/{id}/delete", requireAction(http.HandlerFunc(s.ruleDelete)))
+	mux.Handle("POST /rules/{id}/run", requireAction(http.HandlerFunc(s.ruleRun)))
+	mux.HandleFunc("GET /health", s.health)
+	mux.HandleFunc("GET /api/health", s.apiHealth)
 	mux.HandleFunc("GET /downloads", s.downloads)
 	mux.HandleFunc("GET /downloads/rows", s.downloadRows)
 	mux.HandleFunc("GET /api/downloads", s.apiDownloads)
@@ -125,6 +168,16 @@ type page struct {
 	Actions     []store.Action
 	CleanerMode string
 	Now         time.Time
+	Overview    *overviewModel
+	Library     *libraryModel
+	Requests    *requestsModel
+	Health      *healthModel
+	Search      []searchRow
+	Query       string
+	PublicURL   string
+	Rules       *rulesModel
+	RuleEdit    *ruleEditModel
+	RuleRun     *runModel
 }
 
 func (s *Server) base(title, key string) page {
@@ -132,8 +185,27 @@ func (s *Server) base(title, key string) page {
 	p := page{Title: title, Page: key, Now: s.Now(), CleanerMode: s.CleanerMode, V: assetVersion,
 		Flow: strconv.FormatFloat(flow(dl), 'f', 2, 64)}
 	p.Nav = []navItem{
-		{Key: "downloads", Href: "/downloads", Label: "Downloads", Icon: "↓", Num: "1"},
+		{Key: "overview", Href: "/", Label: "Overview", Icon: "≋", Num: "1"},
+		{Key: "downloads", Href: "/downloads", Label: "Downloads", Icon: "↓", Num: "2"},
 	}
+	for _, a := range []struct{ app, label, icon, num string }{{"radarr", "Movies", "▣", "3"}, {"sonarr", "Series", "▤", "4"}, {"lidarr", "Music", "♫", "5"}, {"readarr", "Books", "▯", "6"}} {
+		if s.Cfg.Enabled(config.App(a.app)) {
+			p.Nav = append(p.Nav, navItem{Key: a.app, Href: "/library/" + a.app, Label: a.label, Icon: a.icon, Num: a.num})
+		}
+	}
+	if s.Cfg.Enabled(config.Jellyseerr) {
+		n := ""
+		if j := s.jellyseerr(); j != nil && len(j.Pending.Get().Data) > 0 {
+			n = "amber"
+		}
+		p.Nav = append(p.Nav, navItem{Key: "requests", Href: "/requests", Label: "Requests", Icon: "✚", Num: "7", Dot: n})
+	}
+	p.Nav = append(p.Nav, navItem{Key: "rules", Href: "/rules", Label: "Rules", Icon: "☰", Num: "8"})
+	hd := ""
+	if len(s.warningsQuick()) > 0 {
+		hd = "amber"
+	}
+	p.Nav = append(p.Nav, navItem{Key: "health", Href: "/health", Label: "Health", Icon: "♥", Num: "9", Dot: hd})
 	for _, a := range config.AllApps {
 		if !s.Cfg.Enabled(a) {
 			continue
@@ -157,6 +229,21 @@ func (s *Server) base(title, key string) page {
 	return p
 }
 
+// warningsQuick counts arr health warnings without building the page (for the rail dot).
+func (s *Server) warningsQuick() []arr.HealthItem {
+	var out []arr.HealthItem
+	for _, app := range arrOrder {
+		if c := s.Snap.Arr(app); c != nil {
+			for _, h := range c.Health.Get().Data {
+				if h.Type != "ok" {
+					out = append(out, h)
+				}
+			}
+		}
+	}
+	return out
+}
+
 func cellState(at time.Time, down bool) string {
 	switch {
 	case down:
@@ -167,15 +254,23 @@ func cellState(at time.Time, down bool) string {
 	return "up"
 }
 
+// render executes a page (a file name under templates/) or a partial (any other name).
 func (s *Server) render(w http.ResponseWriter, name string, data any) {
 	var buf bytes.Buffer
-	if err := s.tpl.ExecuteTemplate(&buf, name, data); err != nil {
+	if err := s.execute(&buf, name, data); err != nil {
 		slog.Error("render", "template", name, "err", err)
 		http.Error(w, err.Error(), 500)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	buf.WriteTo(w)
+}
+
+func (s *Server) execute(buf *bytes.Buffer, name string, data any) error {
+	if t, ok := s.pages[name]; ok {
+		return t.ExecuteTemplate(buf, "layout", data)
+	}
+	return s.parts.ExecuteTemplate(buf, name, data)
 }
 
 func (s *Server) rows(ctx context.Context) []Row {
@@ -209,14 +304,14 @@ func (s *Server) downloadRows(w http.ResponseWriter, r *http.Request) {
 // RowsHTML renders the fragment the SSE ticker broadcasts.
 func (s *Server) RowsHTML(ctx context.Context) string {
 	var buf bytes.Buffer
-	_ = s.tpl.ExecuteTemplate(&buf, "rows", page{Rows: s.rows(ctx), Now: s.Now()})
+	_ = s.execute(&buf, "rows", page{Rows: s.rows(ctx), Now: s.Now()})
 	return buf.String()
 }
 
 func (s *Server) SpeedsHTML() string {
 	dl, up, _ := speeds(s.Snap)
 	var buf bytes.Buffer
-	_ = s.tpl.ExecuteTemplate(&buf, "speeds", page{DL: dl, UP: up})
+	_ = s.execute(&buf, "speeds", page{DL: dl, UP: up})
 	return buf.String()
 }
 
@@ -342,5 +437,89 @@ var funcs = template.FuncMap{
 		}
 	},
 	"hasSuffix": strings.HasSuffix,
-	"title":     func(s string) string { return strings.ToUpper(s[:1]) + s[1:] },
+	"json": func(v any) template.JS {
+		b, _ := json.Marshal(v)
+		return template.JS(b)
+	},
+	"title": func(s string) string { return strings.ToUpper(s[:1]) + s[1:] },
+}
+
+type overviewModel struct {
+	DL         int64            `json:"dl"`
+	UP         int64            `json:"up"`
+	SparkDL    string           `json:"-"`
+	SparkUP    string           `json:"-"`
+	Active     []Row            `json:"active"`
+	QueueCount int              `json:"queueCount"`
+	Trouble    int              `json:"trouble"`
+	Warnings   []Warning        `json:"warnings"`
+	Disks      []Disk           `json:"disks"`
+	Pending    []PendingRequest `json:"pending"`
+	Playing    []Playing        `json:"playing"`
+	Upcoming   []Upcoming       `json:"upcoming"`
+	Counts     struct {
+		Movies  int `json:"movies"`
+		Series  int `json:"series"`
+		Artists int `json:"artists"`
+		Authors int `json:"authors"`
+	} `json:"counts"`
+	Missing struct {
+		Movies   int `json:"movies"`
+		Episodes int `json:"episodes"`
+	} `json:"missing"`
+}
+
+func (s *Server) overviewModel(ctx context.Context) *overviewModel {
+	m := &overviewModel{}
+	m.DL, m.UP, _ = speeds(s.Snap)
+	dl, up := s.History.Samples()
+	m.SparkDL, m.SparkUP = sparkline(dl, 160, 28), sparkline(up, 160, 28)
+	rows := s.rows(ctx)
+	m.QueueCount = len(rows)
+	for _, r := range rows {
+		if r.InTrouble {
+			m.Trouble++
+		}
+		if r.Speed > 0 && len(m.Active) < 5 {
+			m.Active = append(m.Active, r)
+		}
+	}
+	m.Warnings = s.warnings()
+	m.Disks = s.disks()
+	m.Pending = s.pending()
+	m.Playing = s.playing()
+	m.Upcoming = s.upcoming(s.Now())
+	m.Counts.Movies = len(s.Snap.RadarrMovies.Get().Data)
+	m.Counts.Series = len(s.Snap.SonarrSeries.Get().Data)
+	if c := s.lidarr(); c != nil {
+		m.Counts.Artists = len(c.Artists.Get().Data)
+	}
+	if c := s.readarr(); c != nil {
+		m.Counts.Authors = len(c.Authors.Get().Data)
+	}
+	m.Missing.Movies = s.Snap.Radarr.Missing.Get().Data.TotalRecords
+	m.Missing.Episodes = s.Snap.Sonarr.Missing.Get().Data.TotalRecords
+	return m
+}
+
+func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
+	p := s.base("Overview", "overview")
+	p.Overview = s.overviewModel(r.Context())
+	s.render(w, "overview.html", p)
+}
+
+// overviewLive is the SSE-swapped fragment: speeds, sparkline and active rows.
+func (s *Server) overviewLive(w http.ResponseWriter, r *http.Request) {
+	s.render(w, "overview-live", page{Overview: s.overviewModel(r.Context()), Now: s.Now()})
+}
+
+func (s *Server) OverviewLiveHTML(ctx context.Context) string {
+	var buf bytes.Buffer
+	_ = s.execute(&buf, "overview-live", page{Overview: s.overviewModel(ctx), Now: s.Now()})
+	return buf.String()
+}
+
+func (s *Server) apiOverview(w http.ResponseWriter, r *http.Request) {
+	_, _, at := speeds(s.Snap)
+	writeJSON(w, at, s.overviewModel(r.Context()), nil)
 }

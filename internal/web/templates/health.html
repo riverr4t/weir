@@ -1,0 +1,29 @@
+{{define "content"}}
+<section class="head"><div><h1>Health</h1><div class="sub">every app, and Weir's own polls</div></div></section>
+{{with .Health}}
+<div class="grid two">
+  <section class="card">
+    <h2>Warnings</h2>
+    {{if not .Warnings}}<p class="muted">Nothing to report.</p>{{end}}
+    <ul class="rows">{{range .Warnings}}<li><span class="chip {{if eq .Type "error"}}down{{else}}warn{{end}}">{{.App}}</span><span>{{.Message}}</span>{{if .Wiki}}<a class="r" href="{{.Wiki}}" target="_blank" rel="noopener">wiki ↗</a>{{end}}</li>{{end}}</ul>
+  </section>
+  <section class="card">
+    <h2>Apps</h2>
+    <ul class="rows">{{range .Apps}}<li><b class="dot {{.State}}"></b><span>{{.App}}</span><span class="muted">{{.Version}}</span><span class="r">{{if .Err}}<span class="amber">{{.Err}}</span>{{else}}{{.Age}}{{end}}</span></li>{{end}}</ul>
+  </section>
+  {{if .Indexers}}<section class="card">
+    <h2>Indexers <span class="muted">· Prowlarr</span></h2>
+    <ul class="rows">{{range .Indexers}}<li><b class="dot {{if not .Enable}}off{{else if gt .Failed 0}}amber{{else}}up{{end}}"></b><span>{{.Name}} <span class="muted">· {{.Protocol}}{{if .Privacy}} · {{.Privacy}}{{end}}</span></span><span class="r">{{.Queries}} queries · {{.Grabs}} grabs{{if .Failed}} · <span class="amber">{{.Failed}} failed</span>{{end}} · {{.Response}} ms</span></li>{{end}}</ul>
+  </section>{{end}}
+  {{if .Subtitles}}<section class="card">
+    <h2>Subtitles <span class="muted">· Bazarr</span></h2>
+    <div class="grid two"><div class="stat"><b>{{.Subtitles.Movies}}</b><span>movies wanting subtitles</span></div><div class="stat"><b>{{.Subtitles.Episodes}}</b><span>episodes wanting subtitles</span></div></div>
+    <ul class="rows" style="margin-top:10px">{{range .Subtitles.Providers}}<li><b class="dot {{if eq .Status "enabled"}}up{{else}}amber{{end}}"></b><span>{{.Name}}</span><span class="r">{{.Status}}{{if .Retry}} · {{.Retry}}{{end}}</span></li>{{end}}</ul>
+  </section>{{end}}
+  <section class="card">
+    <h2>Weir's polls</h2>
+    <ul class="rows">{{range .Polls}}<li><b class="dot {{.State}}"></b><span class="mono" style="font-size:12px">{{.App}} · {{.Kind}}</span><span class="r">{{.Age}}{{if .Err}} · <span class="amber">{{.Err}}</span>{{end}}</span></li>{{end}}</ul>
+  </section>
+</div>
+{{end}}
+{{end}}

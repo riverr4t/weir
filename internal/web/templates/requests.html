@@ -1,0 +1,25 @@
+{{define "content"}}
+<section class="head">
+  <div><h1>Requests</h1><div class="sub">{{with .Requests}}{{.Count.Pending}} pending · {{.Count.Approved}} approved · {{.Count.Available}} available{{end}}</div></div>
+  {{if .PublicURL}}<a class="btn" href="{{.PublicURL}}" target="_blank" rel="noopener">Open Jellyseerr ↗</a>{{end}}
+</section>
+<section class="card">
+  <form class="search" hx-get="/requests/search" hx-target="#results" hx-trigger="submit, keyup changed delay:400ms from:input" hx-indicator="#spin">
+    <input type="search" name="q" placeholder="Search for a movie or series to request…" autocomplete="off" value="{{.Query}}">
+    <span id="spin" class="htmx-indicator muted">searching…</span>
+  </form>
+  <div id="results">{{template "search-results" .}}</div>
+</section>
+{{with .Requests}}
+<section class="card">
+  <h2>Waiting for approval</h2>
+  {{if not .Pending}}<p class="muted">Nothing is waiting.</p>{{end}}
+  <ul class="rows" id="pending">{{range .Pending}}<li id="req-{{.ID}}"><span class="chip">{{.Type}}</span><span>{{.Title}} <span class="muted">· {{.By}} · {{ago .Age $.Now}}</span></span>
+    <span class="r"><button class="primary" hx-post="/requests/{{.ID}}/approve" hx-target="#req-{{.ID}}" hx-swap="outerHTML">Approve</button> <button hx-post="/requests/{{.ID}}/decline" hx-target="#req-{{.ID}}" hx-swap="outerHTML">Decline</button></span></li>{{end}}</ul>
+</section>
+<section class="card">
+  <h2>Recent</h2>
+  <ul class="rows">{{range .Recent}}<li><span class="chip {{if eq .Status 2}}up{{else if eq .Status 3}}down{{end}}">{{.StatusText}}</span><span>{{.Title}} <span class="muted">· {{.By}} · {{ago .Age $.Now}}</span></span></li>{{end}}</ul>
+</section>
+{{end}}
+{{end}}

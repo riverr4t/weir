@@ -1,0 +1,36 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{.Title}} · Weir</title>
+<link rel="icon" href="/static/weir.svg" type="image/svg+xml">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<meta name="theme-color" content="#0f1a1c">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/htmx.min.js" defer></script>
+<script src="/static/sse.js" defer></script>
+</head>
+<body hx-headers='{"X-Weir-Action":"1"}' data-page="{{.Page}}">
+<div class="crest" id="crest" style="--flow:{{.Flow}}" aria-hidden="true"><i></i></div>
+<nav class="rail" aria-label="Pages">
+  <a class="brand" href="/"><img src="/static/weir.svg" alt="" width="28" height="28"><span>Weir</span></a>
+  <ul>
+    {{range .Nav}}<li><a href="{{.Href}}" {{if eq .Key $.Page}}aria-current="page"{{end}} data-key="{{.Num}}"><span class="ico">{{.Icon}}</span><span class="lbl">{{.Label}}</span>{{if .Dot}}<b class="dot {{.Dot}}"></b>{{end}}</a></li>{{end}}
+  </ul>
+  <div class="apps" aria-label="App status">{{range .AppDots}}<a href="{{.Href}}" title="{{.Title}}"><b class="dot {{.State}}"></b><span>{{.Label}}</span></a>{{end}}</div>
+</nav>
+<main class="page">
+{{block "content" .}}{{end}}
+</main>
+<div id="toast" class="toast" hidden></div>
+<script>
+document.addEventListener('keydown',e=>{if(e.target.matches('input,textarea,select'))return;const a=document.querySelector('.rail a[data-key="'+e.key+'"]');if(a){location.href=a.getAttribute('href');}if(e.key==='/'){const s=document.querySelector('input[type=search]');if(s){e.preventDefault();s.focus();}}});
+document.addEventListener('htmx:responseError',e=>{const t=document.getElementById('toast');t.textContent=e.detail.xhr.responseText||('Request failed ('+e.detail.xhr.status+')');t.hidden=false;clearTimeout(t._h);t._h=setTimeout(()=>t.hidden=true,6000);});
+document.addEventListener('htmx:sseMessage',e=>{if(e.detail.type==='flow'){document.getElementById('crest').style.setProperty('--flow',e.detail.data);}});
+</script>
+</body>
+</html>{{end}}

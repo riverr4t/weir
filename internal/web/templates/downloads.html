@@ -1,0 +1,37 @@
+{{define "downloads.html"}}{{template "layout" .}}{{end}}
+{{define "content"}}
+<section class="head">
+  <div><h1>Downloads</h1><div class="sub">{{len .Rows}} in the queue · cleaner <span class="mono">{{.CleanerMode}}</span></div></div>
+  <div class="speeds" hx-ext="sse" sse-connect="/events" sse-swap="speeds">{{template "speeds" .}}</div>
+</section>
+{{if .NeedsYou}}<div class="needs"><b>{{.NeedsYou}} need{{if eq .NeedsYou 1}}s{{end}} you.</b> Complete downloads the arr could not import. Weir never removes a finished download; sort these out in the app.</div>{{end}}
+<section id="rows" hx-ext="sse" sse-connect="/events" sse-swap="queue">{{template "rows" .}}</section>
+<section class="log">
+  <h2>What the cleaner and you have done</h2>
+  {{if not .Actions}}<p class="muted">Nothing yet. The cleaner reports here first; it only removes anything when its mode is <span class="mono">act</span>.</p>{{end}}
+  <ul>{{range .Actions}}<li><span class="when">{{ago .At $.Now}}</span><span class="kind {{if eq .Outcome "failed"}}failed{{else if hasSuffix .Kind "report"}}report{{end}}">{{.Kind}}</span><span class="what">{{.Subject}} <span class="who">· {{.Actor}}{{if .Error}} · {{.Error}}{{end}}</span></span></li>{{end}}</ul>
+</section>
+{{end}}
+
+{{define "speeds"}}<span class="dl">↓ <b>{{bytes .DL}}</b>/s</span><span class="up">↑ <b>{{bytes .UP}}</b>/s</span>{{end}}
+
+{{define "rows"}}
+{{if not .Rows}}<p class="empty">Nothing is downloading. The weir is quiet.</p>{{else}}
+<table class="queue">
+{{range .Rows}}<tr class="{{if .InTrouble}}trouble{{end}} {{if .Completed}}done{{end}}">
+  <td class="app"><span class="dot {{if .InTrouble}}amber{{else if .Completed}}up{{end}}"></span>{{.App}}</td>
+  <td class="title"><span class="t" title="{{.Title}}">{{.Title}}</span>{{if .Message}}<div class="msg">{{.Message}}</div>{{end}}</td>
+  <td class="state">{{.State}}{{if .Strikes}}<span class="strikes">{{.Strikes}}✕</span>{{end}}</td>
+  <td class="prog"><div class="bar"><i style="width:{{pct .Progress}}"></i></div><span>{{pct .Progress}}</span></td>
+  <td class="speed">{{if .Speed}}{{bytes .Speed}}/s{{end}}</td>
+  <td class="eta">{{eta .ETA}}</td>
+  <td class="acts">
+    {{if not .Completed}}
+      {{if .Paused}}<button hx-post="/downloads/{{.Hash}}/resume" hx-target="#rows">Resume</button>
+      {{else}}<button hx-post="/downloads/{{.Hash}}/pause" hx-target="#rows">Pause</button>{{end}}
+      <button class="danger" hx-post="/downloads/{{.Hash}}/blocklist" hx-target="#rows" hx-confirm="Remove this download, blocklist the release and search again?">Blocklist</button>
+    {{end}}
+  </td>
+</tr>{{end}}
+</table>{{end}}
+{{end}}

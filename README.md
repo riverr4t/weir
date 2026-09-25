@@ -1,5 +1,10 @@
 # Weir
 
+> **Retired from the personal stack.** Weir is no longer deployed on the Pi
+> and will not move to Beelink. Active download cleanup belongs to Cleanuparr.
+> Preserve this source and any recovery data; the run instructions below are
+> historical, not migration steps. Status confirmed September 24, 2026.
+
 A low dam across the media pipeline on ratholepi: one small Go binary that
 watches Radarr, Sonarr, Lidarr, Bookshelf (Readarr), Prowlarr, qBittorrent,
 Bazarr, Jellyfin and Jellyseerr, shows them on one tailnet-only page, and
